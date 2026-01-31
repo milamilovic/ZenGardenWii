@@ -7,9 +7,9 @@ public class UnifiedMovementController : MonoBehaviour
 {
     public enum ControlMode
     {
-        MobileVR,      // Original head-tilt based
-        WiiRemote,     // Wii accelerometer based
-        KeyboardMouse  // Fallback
+        MobileVR,
+        WiiRemote,
+        KeyboardMouse
     }
 
     [Header("Control Mode")]
@@ -18,8 +18,6 @@ public class UnifiedMovementController : MonoBehaviour
 
     [Header("Movement Settings")]
     [SerializeField] private float walkingSpeed = 3.0f;
-    [SerializeField] private float minimumAngleTreshold = 35.0f;
-    [SerializeField] private float maximumAngleTreshold = 90.0f;
 
     [Header("Dead Zone Settings")]
     [SerializeField] private float deadZoneAngle = 30.0f;
@@ -28,6 +26,10 @@ public class UnifiedMovementController : MonoBehaviour
     [Header("Wii Movement Settings")]
     [SerializeField] private float wiiTiltSensitivity = 1.5f;
     [SerializeField] private float wiiDeadZone = 0.15f;
+
+    [Header("Wii Rotation Settings")]
+    [SerializeField] private float wiiRotationSpeed = 2.0f;
+    [SerializeField] private bool invertWiiRotation = false;
 
     [Header("Keyboard Settings")]
     [SerializeField] private float keyboardSpeed = 5.0f;
@@ -76,13 +78,14 @@ public class UnifiedMovementController : MonoBehaviour
 
     void DetectControlMode()
     {
-        // Check for Wii Remote
+        // Check for Wii Remote first
+        WiimoteManager.FindWiimotes();
+
         if (WiimoteManager.HasWiimote())
         {
             currentMode = ControlMode.WiiRemote;
             Debug.Log("Wii Remote detected - using Wii control mode");
         }
-        // Check if running on mobile VR (you can add your VR SDK check here)
         else if (Application.isMobilePlatform)
         {
             currentMode = ControlMode.MobileVR;
@@ -101,24 +104,34 @@ public class UnifiedMovementController : MonoBehaviour
         {
             case ControlMode.WiiRemote:
                 InitializeWii();
+                // Unlock cursor for Wii mode
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
                 break;
             case ControlMode.MobileVR:
-                // Your existing VR setup
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
                 break;
             case ControlMode.KeyboardMouse:
                 Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
                 break;
         }
     }
 
     void InitializeWii()
     {
-        WiimoteManager.FindWiimotes();
-
         if (WiimoteManager.HasWiimote())
         {
             wiimote = WiimoteManager.Wiimotes[0];
             wiimote.SendPlayerLED(true, false, false, false);
+
+            // Set data report mode for accelerometer
+            wiimote.SendDataReportMode(InputDataType.REPORT_BUTTONS_ACCEL_IR10_EXT6);
+
+            // Initialize IR camera for pointer
+            wiimote.SetupIRCamera(IRDataType.BASIC);
+
             Debug.Log("Wii Remote initialized for movement");
         }
         else
@@ -131,6 +144,12 @@ public class UnifiedMovementController : MonoBehaviour
 
     void Update()
     {
+        // Allow mode switching with Tab key
+        if (Input.GetKeyDown(KeyCode.Tab))
+        {
+            CycleControlMode();
+        }
+
         switch (currentMode)
         {
             case ControlMode.MobileVR:
@@ -147,9 +166,15 @@ public class UnifiedMovementController : MonoBehaviour
         CheckGroundSurface();
     }
 
+    void CycleControlMode()
+    {
+        currentMode = (ControlMode)(((int)currentMode + 1) % 3);
+        Debug.Log($"Switched to {currentMode} mode");
+        InitializeControlMode();
+    }
+
     void UpdateMobileVRMovement()
     {
-        // Your original look-to-walk logic
         float headTiltAngle = GetNormalizedHeadTilt();
         bool wasWalking = isWalking;
 
@@ -158,7 +183,7 @@ public class UnifiedMovementController : MonoBehaviour
             isWalking = false;
             currentSpeedFactor = 0f;
         }
-        else if (headTiltAngle >= deadZoneAngle && headTiltAngle <= maximumAngleTreshold)
+        else if (headTiltAngle >= deadZoneAngle && headTiltAngle <= 90f)
         {
             isWalking = true;
 
@@ -182,7 +207,11 @@ public class UnifiedMovementController : MonoBehaviour
 
     void UpdateWiiMovement()
     {
-        if (wiimote == null) return;
+        if (wiimote == null)
+        {
+            Debug.LogWarning("Wiimote is null in UpdateWiiMovement");
+            return;
+        }
 
         // Read Wii Remote data
         int ret;
@@ -197,9 +226,9 @@ public class UnifiedMovementController : MonoBehaviour
 
         bool wasWalking = isWalking;
 
-        // Calculate tilt angle (pointing down = walking)
-        // When Wii Remote points down, accel[1] (Y) decreases
-        float tiltFactor = 1f - accel[1]; // 0 = horizontal, 1 = pointing down
+        // Calculate tilt angle for walking (pointing down = walking)
+        // accel[1] is the Y-axis (up/down when held vertically)
+        float tiltFactor = Mathf.Clamp01(1f - accel[1]);
 
         // Apply dead zone
         if (tiltFactor < wiiDeadZone)
@@ -216,19 +245,25 @@ public class UnifiedMovementController : MonoBehaviour
             currentSpeedFactor = Mathf.Min(currentSpeedFactor, 1f);
         }
 
-        UpdateVignette(wasWalking);
+        // Handle rotation with left/right tilt (accel[0] is X-axis)
+        float rotationInput = accel[0];
+        if (Mathf.Abs(rotationInput) > 0.2f) // Dead zone for rotation
+        {
+            float rotationAmount = rotationInput * wiiRotationSpeed * (invertWiiRotation ? -1 : 1);
+            transform.Rotate(0, rotationAmount, 0);
+        }
 
-        // Optional: D-Pad for strafing
+        // D-Pad for additional rotation control
         if (wiimote.Button.d_left)
         {
-            Vector3 leftMove = -mainCamera.transform.right * walkingSpeed * Time.deltaTime;
-            rb.MovePosition(rb.position + leftMove);
+            transform.Rotate(0, -wiiRotationSpeed * 2f, 0);
         }
         if (wiimote.Button.d_right)
         {
-            Vector3 rightMove = mainCamera.transform.right * walkingSpeed * Time.deltaTime;
-            rb.MovePosition(rb.position + rightMove);
+            transform.Rotate(0, wiiRotationSpeed * 2f, 0);
         }
+
+        UpdateVignette(wasWalking);
     }
 
     void UpdateKeyboardMovement()
@@ -257,7 +292,7 @@ public class UnifiedMovementController : MonoBehaviour
             rb.MovePosition(rb.position + movement);
         }
 
-        // Mouse look
+        // Mouse look - only in keyboard mode
         rotationX += Input.GetAxis("Mouse X") * mouseSensitivity;
         rotationY -= Input.GetAxis("Mouse Y") * mouseSensitivity;
         rotationY = Mathf.Clamp(rotationY, -90f, 90f);
@@ -270,17 +305,23 @@ public class UnifiedMovementController : MonoBehaviour
 
     private void FixedUpdate()
     {
+        // Move player in Wii and VR modes (keyboard handles movement in Update)
         if (isWalking && currentMode != ControlMode.KeyboardMouse)
         {
             MovePlayer();
         }
 
         // Audio handling
+        HandleFootstepAudio();
+    }
+
+    private void HandleFootstepAudio()
+    {
         if (isWalking)
         {
             AudioClip currentFootstepSound = isOnSand ? sandWalkingAudioEffect : walkingAudioEffect;
             float basePitch = isOnSand ? sandSoundSpeed : 1.0f;
-            float adjustedPitch = basePitch * currentSpeedFactor;
+            float adjustedPitch = basePitch * Mathf.Max(0.5f, currentSpeedFactor);
 
             if (!walkingAudioSource.isPlaying || walkingAudioSource.clip != currentFootstepSound)
             {
@@ -358,15 +399,28 @@ public class UnifiedMovementController : MonoBehaviour
         return speedMultiplier;
     }
 
-    // Debug info
     void OnGUI()
     {
+        GUIStyle style = new GUIStyle();
+        style.fontSize = 16;
+        style.normal.textColor = Color.white;
+
+        GUI.Label(new Rect(10, 10, 300, 20), $"Control Mode: {currentMode} (Tab to switch)", style);
+        GUI.Label(new Rect(10, 30, 300, 20), $"Walking: {isWalking}", style);
+        GUI.Label(new Rect(10, 50, 300, 20), $"Speed Factor: {currentSpeedFactor:F2}", style);
+
         if (currentMode == ControlMode.WiiRemote && wiimote != null)
         {
-            GUI.Label(new Rect(10, 10, 300, 20), "Control Mode: Wii Remote");
-            GUI.Label(new Rect(10, 30, 300, 20), $"Walking: {isWalking}");
-            GUI.Label(new Rect(10, 50, 300, 20), $"Speed Factor: {currentSpeedFactor:F2}");
-            GUI.Label(new Rect(10, 70, 300, 20), $"Wii Accel Y: {wiiAcceleration.y:F2}");
+            GUI.Label(new Rect(10, 70, 300, 20), $"Wii Accel: X:{wiiAcceleration.x:F2} Y:{wiiAcceleration.y:F2} Z:{wiiAcceleration.z:F2}", style);
+            GUI.Label(new Rect(10, 90, 300, 20), $"Wiimote Connected: {wiimote != null}", style);
+        }
+    }
+
+    private void OnApplicationQuit()
+    {
+        if (wiimote != null)
+        {
+            WiimoteManager.Cleanup(wiimote);
         }
     }
 }
