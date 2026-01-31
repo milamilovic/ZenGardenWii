@@ -513,11 +513,11 @@ public class InputManager : MonoBehaviour {
     public IEnumerator RumbleWiimoteForSecondsCoroutine(float durationInSeconds)
     {
         wiimote.RumbleOn = true; // Enabled Rumble
-        wiimote.SendStatusInfoRequest(); // Requests Status Report, encodes Rumble into input report
+        wiimote.SendDataReportMode(InputDataType.REPORT_BUTTONS_ACCEL_EXT16);
         yield return new WaitForSeconds(durationInSeconds);
 
         wiimote.RumbleOn = false; // Disabled Rumble
-        wiimote.SendStatusInfoRequest(); // Requests Status Report, encodes Rumble into input report
+        wiimote.SendDataReportMode(InputDataType.REPORT_BUTTONS_ACCEL_EXT16);
     }
 
     public void PlayLoadingLEDEffect(float totalDurationInSeconds)
