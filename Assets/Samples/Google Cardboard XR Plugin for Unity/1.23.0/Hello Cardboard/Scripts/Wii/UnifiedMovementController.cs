@@ -25,8 +25,8 @@ public class UnifiedMovementController : MonoBehaviour
     [SerializeField] private float fullSpeedAngle = 45.0f;
 
     [Header("Wii Movement Settings - Downward Tilt")]
-    [SerializeField] private float wiiDownwardTiltThreshold = 25f;  // Minimum angle (degrees) to start walking
-    [SerializeField] private float wiiDownwardTiltMaxSpeed = 60f;   // Angle for full speed
+    [SerializeField] private float wiiDownwardTiltThreshold = 15f;  // Minimum angle (degrees) to start walking
+    [SerializeField] private float wiiDownwardTiltMaxSpeed = 50f;   // Angle for full speed
     [SerializeField] private float wiiTiltSmoothing = 8f;           // Smoothing for tilt input
 
     [Header("Wii Rotation Settings - D-Pad Only")]
@@ -293,25 +293,17 @@ public class UnifiedMovementController : MonoBehaviour
     // Calculate the angle of downward tilt in degrees
     float CalculateDownwardTiltAngle(float[] accel)
     {
-        // When held vertically upright: accel[1] (Y) is around 1.0, accel[2] (Z) is around 0.0
-        // When tilted forward (down): accel[1] decreases, accel[2] increases
-        // Calculate angle from vertical using Y and Z components
+        float y = accel[1]; // up/down
+        float z = accel[2]; // forward/back
 
-        float y = accel[1];  // Vertical component
-        float z = accel[2];  // Forward/back component
+        // Ignore upward tilt
+        if (z <= 0f)
+            return 0f;
 
-        // Calculate the magnitude of the tilt vector
-        float magnitude = Mathf.Sqrt(y * y + z * z);
+        // Angle from horizontal plane
+        float angle = Mathf.Atan2(z, y) * Mathf.Rad2Deg;
 
-        // Calculate angle from vertical (0° = upright/vertical, 90° = horizontal)
-        // Using acos of the Y component normalized by magnitude
-        float angle = Mathf.Acos(Mathf.Clamp(y / magnitude, -1f, 1f)) * Mathf.Rad2Deg;
-
-        // Only consider forward tilt (positive Z values)
-        // If tilted backward (negative Z), return 0
-        if (z < 0) angle = 0;
-
-        return angle;
+        return Mathf.Clamp(angle, 0f, 90f);
     }
 
     void UpdateKeyboardMovement()
