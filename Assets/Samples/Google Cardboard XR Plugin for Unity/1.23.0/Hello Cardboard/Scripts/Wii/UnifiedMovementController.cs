@@ -14,7 +14,8 @@ public class UnifiedMovementController : MonoBehaviour
 
     [Header("Control Mode")]
     [SerializeField] private ControlMode currentMode = ControlMode.WiiRemote;
-    [SerializeField] private bool autoDetectMode = true;
+    [SerializeField] private bool autoDetectMode = false;
+    [SerializeField] private bool showWiiInstructions = true;
 
     [Header("Movement Settings")]
     [SerializeField] private float walkingSpeed = 3.0f;
@@ -23,13 +24,15 @@ public class UnifiedMovementController : MonoBehaviour
     [SerializeField] private float deadZoneAngle = 30.0f;
     [SerializeField] private float fullSpeedAngle = 45.0f;
 
-    [Header("Wii Movement Settings")]
-    [SerializeField] private float wiiTiltSensitivity = 1.5f;
-    [SerializeField] private float wiiDeadZone = 0.15f;
+    [Header("Wii Movement Settings - Downward Tilt")]
+    [SerializeField] private float wiiDownwardTiltThreshold = 25f;  // Minimum angle (degrees) to start walking
+    [SerializeField] private float wiiDownwardTiltMaxSpeed = 60f;   // Angle for full speed
+    [SerializeField] private float wiiTiltSmoothing = 8f;           // Smoothing for tilt input
 
-    [Header("Wii Rotation Settings")]
-    [SerializeField] private float wiiRotationSpeed = 2.0f;
-    [SerializeField] private bool invertWiiRotation = false;
+    [Header("Wii Rotation Settings - D-Pad Only")]
+    [SerializeField] private float wiiHorizontalRotationSpeed = 120f;  // Left/Right rotation (degrees/sec)
+    [SerializeField] private float wiiVerticalRotationSpeed = 60f;     // Up/Down camera tilt (degrees/sec)
+    [SerializeField] private float wiiMaxVerticalAngle = 60f;          // Max camera up/down angle
 
     [Header("Keyboard Settings")]
     [SerializeField] private float keyboardSpeed = 5.0f;
@@ -57,6 +60,8 @@ public class UnifiedMovementController : MonoBehaviour
     // Wii specific
     private Wiimote wiimote;
     private Vector3 wiiAcceleration;
+    private float smoothedTiltInput = 0f;
+    private float currentVerticalAngle = 0f;  // Track camera vertical rotation
 
     // Keyboard specific
     private float rotationX = 0f;
@@ -129,10 +134,7 @@ public class UnifiedMovementController : MonoBehaviour
             // Set data report mode for accelerometer
             wiimote.SendDataReportMode(InputDataType.REPORT_BUTTONS_ACCEL_IR10_EXT6);
 
-            // Initialize IR camera for pointer
-            wiimote.SetupIRCamera(IRDataType.BASIC);
-
-            Debug.Log("Wii Remote initialized for movement");
+            Debug.Log("Wii Remote initialized - Tilt down to walk, D-Pad to look around");
         }
         else
         {
@@ -226,44 +228,90 @@ public class UnifiedMovementController : MonoBehaviour
 
         bool wasWalking = isWalking;
 
-        // Calculate tilt angle for walking (pointing down = walking)
-        // accel[1] is the Y-axis (up/down when held vertically)
-        float tiltFactor = Mathf.Clamp01(1f - accel[1]);
+        // Calculate downward tilt angle
+        // When Wiimote is held upright (vertical), Y is ~1.0
+        // When tilted down 90 degrees (horizontal pointing forward), Y is ~0.0
+        // We use the angle from vertical position
+        float downwardTilt = CalculateDownwardTiltAngle(accel);
 
-        // Apply dead zone
-        if (tiltFactor < wiiDeadZone)
+        // Apply threshold for walking
+        if (downwardTilt < wiiDownwardTiltThreshold)
         {
+            // Not tilted enough - don't walk
             isWalking = false;
             currentSpeedFactor = 0f;
         }
         else
         {
+            // Tilted down enough - calculate speed
             isWalking = true;
-            // Map from dead zone to 1.0
-            currentSpeedFactor = Mathf.Clamp01((tiltFactor - wiiDeadZone) / (1f - wiiDeadZone));
-            currentSpeedFactor *= wiiTiltSensitivity;
-            currentSpeedFactor = Mathf.Min(currentSpeedFactor, 1f);
+
+            if (downwardTilt >= wiiDownwardTiltMaxSpeed)
+            {
+                currentSpeedFactor = 1f;
+            }
+            else
+            {
+                // Interpolate between threshold and max speed
+                currentSpeedFactor = Mathf.InverseLerp(wiiDownwardTiltThreshold, wiiDownwardTiltMaxSpeed, downwardTilt);
+            }
         }
 
-        // Handle rotation with left/right tilt (accel[0] is X-axis)
-        float rotationInput = accel[0];
-        if (Mathf.Abs(rotationInput) > 0.2f) // Dead zone for rotation
-        {
-            float rotationAmount = rotationInput * wiiRotationSpeed * (invertWiiRotation ? -1 : 1);
-            transform.Rotate(0, rotationAmount, 0);
-        }
+        // Smooth the speed changes
+        float targetSpeed = isWalking ? currentSpeedFactor : 0f;
+        currentSpeedFactor = Mathf.Lerp(currentSpeedFactor, targetSpeed, Time.deltaTime * wiiTiltSmoothing);
 
-        // D-Pad for additional rotation control
+        // D-Pad controls for rotation only
+        // Left/Right for horizontal rotation (turning)
         if (wiimote.Button.d_left)
         {
-            transform.Rotate(0, -wiiRotationSpeed * 2f, 0);
+            transform.Rotate(0, -wiiHorizontalRotationSpeed * Time.deltaTime, 0);
         }
         if (wiimote.Button.d_right)
         {
-            transform.Rotate(0, wiiRotationSpeed * 2f, 0);
+            transform.Rotate(0, wiiHorizontalRotationSpeed * Time.deltaTime, 0);
         }
 
+        // Up/Down for camera vertical rotation (looking up/down)
+        if (wiimote.Button.d_up)
+        {
+            currentVerticalAngle -= wiiVerticalRotationSpeed * Time.deltaTime;
+            currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
+        }
+        if (wiimote.Button.d_down)
+        {
+            currentVerticalAngle += wiiVerticalRotationSpeed * Time.deltaTime;
+            currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
+        }
+
+        // Apply vertical rotation to camera
+        mainCamera.transform.localRotation = Quaternion.Euler(currentVerticalAngle, 0f, 0f);
+
         UpdateVignette(wasWalking);
+    }
+
+    // Calculate the angle of downward tilt in degrees
+    float CalculateDownwardTiltAngle(float[] accel)
+    {
+        // When held vertically upright: accel[1] (Y) is around 1.0, accel[2] (Z) is around 0.0
+        // When tilted forward (down): accel[1] decreases, accel[2] increases
+        // Calculate angle from vertical using Y and Z components
+
+        float y = accel[1];  // Vertical component
+        float z = accel[2];  // Forward/back component
+
+        // Calculate the magnitude of the tilt vector
+        float magnitude = Mathf.Sqrt(y * y + z * z);
+
+        // Calculate angle from vertical (0° = upright/vertical, 90° = horizontal)
+        // Using acos of the Y component normalized by magnitude
+        float angle = Mathf.Acos(Mathf.Clamp(y / magnitude, -1f, 1f)) * Mathf.Rad2Deg;
+
+        // Only consider forward tilt (positive Z values)
+        // If tilted backward (negative Z), return 0
+        if (z < 0) angle = 0;
+
+        return angle;
     }
 
     void UpdateKeyboardMovement()
@@ -402,21 +450,43 @@ public class UnifiedMovementController : MonoBehaviour
         return speedMultiplier;
     }
 
-    void OnGUI()
+    /*void OnGUI()
     {
         GUIStyle style = new GUIStyle();
         style.fontSize = 16;
         style.normal.textColor = Color.white;
 
-        GUI.Label(new Rect(10, 10, 300, 20), $"Control Mode: {currentMode} (Tab to switch)", style);
-        GUI.Label(new Rect(10, 30, 300, 20), $"Walking: {isWalking}", style);
-        GUI.Label(new Rect(10, 50, 300, 20), $"Speed Factor: {currentSpeedFactor:F2}", style);
+        GUI.Label(new Rect(10, 10, 400, 20), $"Control Mode: {currentMode} (Tab to switch)", style);
+        GUI.Label(new Rect(10, 30, 400, 20), $"Walking: {isWalking}", style);
+        GUI.Label(new Rect(10, 50, 400, 20), $"Speed Factor: {currentSpeedFactor:F2}", style);
 
         if (currentMode == ControlMode.WiiRemote && wiimote != null)
         {
-            GUI.Label(new Rect(10, 70, 300, 20), $"Wii Accel: X:{wiiAcceleration.x:F2} Y:{wiiAcceleration.y:F2} Z:{wiiAcceleration.z:F2}", style);
-            GUI.Label(new Rect(10, 90, 300, 20), $"Wiimote Connected: {wiimote != null}", style);
+            float downwardAngle = CalculateDownwardTiltAngle(new float[] { wiiAcceleration.x, wiiAcceleration.y, wiiAcceleration.z });
+
+            GUI.Label(new Rect(10, 70, 400, 20), $"Downward Tilt: {downwardAngle:F1}° (Threshold: {wiiDownwardTiltThreshold:F0}°)", style);
+            GUI.Label(new Rect(10, 90, 400, 20), $"Camera Angle: {currentVerticalAngle:F1}°", style);
+            GUI.Label(new Rect(10, 110, 400, 20), $"Wiimote Connected: {wiimote != null}", style);
+
+            // Show instructions
+            if (showWiiInstructions)
+            {
+                GUIStyle instructionStyle = new GUIStyle(style);
+                instructionStyle.fontSize = 14;
+                instructionStyle.normal.textColor = Color.yellow;
+                instructionStyle.wordWrap = true;
+
+                string instructions = "Wii Controls:\n• Tilt Wiimote DOWN to walk (faster tilt = faster walk)\n" +
+                                    "• D-Pad LEFT/RIGHT to turn\n• D-Pad UP/DOWN to look up/down\n" +
+                                    "• Keep horizontal to stop";
+                GUI.Label(new Rect(10, Screen.height - 100, Screen.width - 20, 90), instructions, instructionStyle);
+            }
         }
+    }*/
+
+    string GetCurrentSchemeInstructions()
+    {
+        return "Tilt Wiimote down to walk. Use D-Pad to look around (Left/Right to turn, Up/Down to look).";
     }
 
     private void OnApplicationQuit()
