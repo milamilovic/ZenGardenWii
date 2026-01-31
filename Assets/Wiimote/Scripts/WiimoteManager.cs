@@ -29,11 +29,20 @@ public class WiimoteManager
     public static int MaxWriteFrequency = 20; // In ms
     private static Queue<WriteQueueData> WriteQueue;
 
-    // ------------- RAW HIDAPI INTERFACE ------------- //
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void Init()
+    {
+        isRunning = false;
+        SendThreadObj = null;
+        WriteQueue = null;
+        _Wiimotes = new List<Wiimote>();
+    }
 
-    /// \brief Attempts to find connected Wii Remotes, Wii Remote Pluses or Wii U Pro Controllers
-    /// \return If any new remotes were found.
-    public static bool FindWiimotes()
+        // ------------- RAW HIDAPI INTERFACE ------------- //
+
+        /// \brief Attempts to find connected Wii Remotes, Wii Remote Pluses or Wii U Pro Controllers
+        /// \return If any new remotes were found.
+        public static bool FindWiimotes()
     {
         bool ret = _FindWiimotes(WiimoteType.WIIMOTE);
         ret = ret || _FindWiimotes(WiimoteType.WIIMOTEPLUS);
@@ -113,18 +122,67 @@ public class WiimoteManager
         return found;
     }
 
-    /// \brief Disables the given \c Wiimote by closing its bluetooth HID connection.  Also removes the remote from Wiimotes
-    /// \param remote The remote to cleanup
-    public static void Cleanup(Wiimote remote)
-    {
-        if (remote.hidapi_handle != IntPtr.Zero)
-            HIDapi.hid_close(remote.hidapi_handle);
+        /// \brief Disables the given \c Wiimote by closing its bluetooth HID connection.  Also removes the remote from Wiimotes
+        /// \param remote The remote to cleanup
+        public static void Cleanup(Wiimote remote)
+        {
+            if (remote != null)
+            {
+                try
+                {
+                    if (remote.hidapi_handle != IntPtr.Zero)
+                    {
+                        HIDapi.hid_close(remote.hidapi_handle);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("Cleanup exception: " + e.Message);
+                }
 
-        Wiimotes.Remove(remote);
-    }
+                Wiimotes.Remove(remote);
+            }
+        }
 
-    /// \return If any Wii Remotes are connected and found by FindWiimote
-    public static bool HasWiimote()
+        public static void CleanupAll()
+        {
+            isRunning = false;
+
+            // Close all wiimotes
+            foreach (var wiimote in Wiimotes.ToArray())
+            {
+                Cleanup(wiimote);
+            }
+
+            Wiimotes.Clear();
+
+            // Stop thread
+            if (SendThreadObj != null)
+            {
+                try
+                {
+                    SendThreadObj.Join(500);
+                    SendThreadObj = null;
+                }
+                catch { }
+            }
+
+            // Clear queue
+            if (WriteQueue != null)
+            {
+                try
+                {
+                    lock (WriteQueue)
+                    {
+                        WriteQueue.Clear();
+                    }
+                }
+                catch { }
+            }
+        }
+
+        /// \return If any Wii Remotes are connected and found by FindWiimote
+        public static bool HasWiimote()
     {
         return !(Wiimotes.Count <= 0 || Wiimotes[0] == null || Wiimotes[0].hidapi_handle == IntPtr.Zero);
     }
@@ -155,32 +213,89 @@ public class WiimoteManager
         return 0; // TODO: Better error handling
     }
 
-    private static Thread SendThreadObj;
-    private static void SendThread()
-    {
-        while (true)
+        private static Thread SendThreadObj;
+        private static volatile bool isRunning = true;
+
+        private static void SendThread()
         {
-            lock (WriteQueue)
+            try
             {
-                if (WriteQueue.Count != 0)
+                while (isRunning)
                 {
-                    WriteQueueData wqd = WriteQueue.Dequeue();
-                    int res = HIDapi.hid_write(wqd.pointer, wqd.data, new UIntPtr(Convert.ToUInt32(wqd.data.Length)));
-                    if (res == -1) Debug.LogError("HidAPI reports error " + res + " on write: " + Marshal.PtrToStringUni(HIDapi.hid_error(wqd.pointer)));
-                    else if (Debug_Messages) Debug.Log("Sent " + res + "b: [" + wqd.data[0].ToString("X").PadLeft(2, '0') + "] " + BitConverter.ToString(wqd.data, 1));
+                    try
+                    {
+                        lock (WriteQueue)
+                        {
+                            if (WriteQueue != null && WriteQueue.Count != 0)
+                            {
+                                WriteQueueData wqd = WriteQueue.Dequeue();
+                                if (wqd != null && wqd.pointer != IntPtr.Zero)
+                                {
+                                    int res = HIDapi.hid_write(wqd.pointer, wqd.data, new UIntPtr(Convert.ToUInt32(wqd.data.Length)));
+                                    if (res == -1) Debug.LogError("HidAPI reports error " + res + " on write: " + Marshal.PtrToStringUni(HIDapi.hid_error(wqd.pointer)));
+                                    else if (Debug_Messages) Debug.Log("Sent " + res + "b: [" + wqd.data[0].ToString("X").PadLeft(2, '0') + "] " + BitConverter.ToString(wqd.data, 1));
+                                }
+                            }
+                        }
+                        Thread.Sleep(MaxWriteFrequency);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning("SendThread inner exception: " + e.Message);
+                    }
                 }
             }
-            Thread.Sleep(MaxWriteFrequency);
+            catch (ThreadAbortException)
+            {
+                Debug.Log("SendThread aborted safely");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("SendThread exception: " + e.Message);
+            }
         }
-    }
 
-    /// \brief Attempts to recieve RAW DATA to the given bluetooth HID device.  This is essentially a wrapper around HIDApi.
-    /// \param hidapi_wiimote The HIDApi device handle to write to.
-    /// \param buf The data to write.
-    /// \sa Wiimote::ReadWiimoteData()
-    /// \warning DO NOT use this unless you absolutely need to bypass the given Wiimote communication functions.
-    ///          Use the functionality provided by Wiimote instead.
-    public static int RecieveRaw(IntPtr hidapi_wiimote, byte[] buf)
+        public static void StopSendThread()
+        {
+            isRunning = false;
+
+            if (SendThreadObj != null)
+            {
+                try
+                {
+                    if (!SendThreadObj.Join(1000)) // Wait 1 second
+                    {
+                        Debug.LogWarning("SendThread didn't stop gracefully, aborting...");
+                        SendThreadObj.Abort(); // Force stop if it doesn't stop
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("StopSendThread exception: " + e.Message);
+                }
+                finally
+                {
+                    SendThreadObj = null;
+                }
+            }
+
+            // Clear the queue
+            if (WriteQueue != null)
+            {
+                lock (WriteQueue)
+                {
+                    WriteQueue.Clear();
+                }
+            }
+        }
+
+        /// \brief Attempts to recieve RAW DATA to the given bluetooth HID device.  This is essentially a wrapper around HIDApi.
+        /// \param hidapi_wiimote The HIDApi device handle to write to.
+        /// \param buf The data to write.
+        /// \sa Wiimote::ReadWiimoteData()
+        /// \warning DO NOT use this unless you absolutely need to bypass the given Wiimote communication functions.
+        ///          Use the functionality provided by Wiimote instead.
+        public static int RecieveRaw(IntPtr hidapi_wiimote, byte[] buf)
     {
         if (hidapi_wiimote == IntPtr.Zero) return -2;
 

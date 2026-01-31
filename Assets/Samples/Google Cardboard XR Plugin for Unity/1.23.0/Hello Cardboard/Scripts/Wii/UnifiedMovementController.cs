@@ -292,13 +292,16 @@ public class UnifiedMovementController : MonoBehaviour
             rb.MovePosition(rb.position + movement);
         }
 
-        // Mouse look - only in keyboard mode
-        rotationX += Input.GetAxis("Mouse X") * mouseSensitivity;
-        rotationY -= Input.GetAxis("Mouse Y") * mouseSensitivity;
-        rotationY = Mathf.Clamp(rotationY, -90f, 90f);
+        // Mouse look - only update if we're in keyboard mode
+        if (currentMode == ControlMode.KeyboardMouse)
+        {
+            rotationX += Input.GetAxis("Mouse X") * mouseSensitivity;
+            rotationY -= Input.GetAxis("Mouse Y") * mouseSensitivity;
+            rotationY = Mathf.Clamp(rotationY, -90f, 90f);
 
-        mainCamera.transform.localRotation = Quaternion.Euler(rotationY, 0f, 0f);
-        transform.localRotation = Quaternion.Euler(0f, rotationX, 0f);
+            mainCamera.transform.localRotation = Quaternion.Euler(rotationY, 0f, 0f);
+            transform.localRotation = Quaternion.Euler(0f, rotationX, 0f);
+        }
 
         UpdateVignette(wasWalking);
     }
@@ -418,9 +421,21 @@ public class UnifiedMovementController : MonoBehaviour
 
     private void OnApplicationQuit()
     {
-        if (wiimote != null)
-        {
-            WiimoteManager.Cleanup(wiimote);
-        }
+        CleanupWiimote();
+    }
+
+    private void OnDisable()
+    {
+        CleanupWiimote();
+    }
+
+    private bool cleanupExecuted = false;
+
+    private void CleanupWiimote()
+    {
+        if (cleanupExecuted) return;
+        cleanupExecuted = true;
+
+        wiimote = null;
     }
 }
