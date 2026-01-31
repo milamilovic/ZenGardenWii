@@ -499,14 +499,14 @@ public class InputManager : MonoBehaviour {
 
     private static void StartRumble()
     {
-        wiimote.RumbleOn = true; // Enabled Rumble
-        wiimote.SendStatusInfoRequest(); // Requests Status Report, encodes Rumble into input report
+        wiimote.RumbleOn = true;
+        wiimote.SendStatusInfoRequest(); // This actually sends the rumble command
     }
 
     private static void StopRumble()
     {
-        wiimote.RumbleOn = false; // Disabled Rumble
-        wiimote.SendStatusInfoRequest(); // Requests Status Report, encodes Rumble into input report
+        wiimote.RumbleOn = false;
+        wiimote.SendStatusInfoRequest(); // This actually sends the rumble command
     }
 
     // Using Coroutine because Thread.Sleep() freezes the game

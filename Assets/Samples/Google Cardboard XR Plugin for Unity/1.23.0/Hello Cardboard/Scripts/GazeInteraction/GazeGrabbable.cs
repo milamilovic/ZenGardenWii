@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using WiimoteApi;
 
 public class GazeGrabbable : MonoBehaviour, IGazeInteractable
 {
@@ -27,6 +28,9 @@ public class GazeGrabbable : MonoBehaviour, IGazeInteractable
 
     [Header("Player Collider Settings")]
     public bool addPlayerCollider = true;
+
+    [Header("Vibration Settings")]
+    [SerializeField] private float grabVibrationDuration = 0.2f;
 
     private bool isGrabbed = false;
     private BoxCollider boxCollider;
@@ -281,6 +285,19 @@ public class GazeGrabbable : MonoBehaviour, IGazeInteractable
         }
 
         CreatePlayerCollider();
+
+        // Trigger vibration when grabbing - use the same method as the working Cube example
+        Debug.Log($"Attempting grab vibration - InputManager.inputs: {InputManager.inputs != null}");
+
+        if (InputManager.inputs != null)
+        {
+            InputManager.inputs.RumbleWiimoteForSeconds(grabVibrationDuration);
+            Debug.Log("Grab vibration triggered!");
+        }
+        else
+        {
+            Debug.LogWarning("Cannot vibrate - InputManager.inputs is null!");
+        }
 
         Debug.Log("Grabbed: " + gameObject.name + " (Physics: " + usePhysicsVersion + ")");
     }

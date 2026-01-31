@@ -30,6 +30,7 @@ public class GazeDoorAdapter : MonoBehaviour, IGazeInteractable
             visualEffects = GetComponent<GazeVisualEffect>();
         }
     }
+
     public void OnGazeEnter()
     {
         if (isWaitingForDoors)
@@ -46,6 +47,7 @@ public class GazeDoorAdapter : MonoBehaviour, IGazeInteractable
             visualEffects.ShowEffects();
         }
     }
+
     public void OnGazeExit()
     {
         if (isWaitingForDoors)
@@ -62,6 +64,7 @@ public class GazeDoorAdapter : MonoBehaviour, IGazeInteractable
             visualEffects.HideEffects();
         }
     }
+
     public void UpdateGazeProgress(float progress)
     {
         if (isWaitingForDoors)
@@ -72,6 +75,7 @@ public class GazeDoorAdapter : MonoBehaviour, IGazeInteractable
         if (fillCircle != null)
             fillCircle.fillAmount = progress;
     }
+
     public void OnGazeActivate()
     {
         if (isWaitingForDoors)
@@ -87,6 +91,7 @@ public class GazeDoorAdapter : MonoBehaviour, IGazeInteractable
             fillCircle.fillAmount = 0f;
         StartCoroutine(WaitForDoorsAndActivateLoader());
     }
+
     IEnumerator WaitForDoorsAndActivateLoader()
     {
         isWaitingForDoors = true;
