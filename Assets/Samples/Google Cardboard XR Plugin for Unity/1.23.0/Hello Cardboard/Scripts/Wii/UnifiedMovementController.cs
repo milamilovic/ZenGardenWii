@@ -216,8 +216,33 @@ public class UnifiedMovementController : MonoBehaviour
         }
 
         wiimote = InputManager.wiimote;
-
         if (wiimote == null) return;
+
+        // Skip movement updates if in drawing mode
+        if (isDrawingMode)
+        {
+            // Still allow D-Pad rotation for looking around
+            if (wiimote.Button.d_left)
+            {
+                transform.Rotate(0, -wiiHorizontalRotationSpeed * Time.deltaTime, 0);
+            }
+            if (wiimote.Button.d_right)
+            {
+                transform.Rotate(0, wiiHorizontalRotationSpeed * Time.deltaTime, 0);
+            }
+            if (wiimote.Button.d_up)
+            {
+                currentVerticalAngle -= wiiVerticalRotationSpeed * Time.deltaTime;
+                currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
+            }
+            if (wiimote.Button.d_down)
+            {
+                currentVerticalAngle += wiiVerticalRotationSpeed * Time.deltaTime;
+                currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
+            }
+            mainCamera.transform.localRotation = Quaternion.Euler(currentVerticalAngle, 0f, 0f);
+            return; // Exit early, no movement
+        }
 
         // Get accelerometer data
         float[] accel = wiimote.Accel.GetCalibratedAccelData();
@@ -496,5 +521,24 @@ public class UnifiedMovementController : MonoBehaviour
         cleanupExecuted = true;
 
         wiimote = null;
+    }
+
+    private bool isDrawingMode = false;
+
+    public void SetDrawingMode(bool enabled)
+    {
+        isDrawingMode = enabled;
+
+        // Disable movement when in drawing mode
+        if (enabled)
+        {
+            isWalking = false;
+            currentSpeedFactor = 0f;
+        }
+    }
+
+    public bool IsDrawingMode()
+    {
+        return isDrawingMode;
     }
 }
