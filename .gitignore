@@ -34,3 +34,7 @@ Assets/#NVJOB Water Shaders V2/**
 
 # But keep meta files
 !Assets/#NVJOB Water Shaders V2/**/*.meta
+
+# Keep only your scenes
+!Assets/Scenes/*.unity
+!Assets/Samples/Google Cardboard XR Plugin for Unity/1.23.0/Hello Cardboard/Scenes/*.unity
