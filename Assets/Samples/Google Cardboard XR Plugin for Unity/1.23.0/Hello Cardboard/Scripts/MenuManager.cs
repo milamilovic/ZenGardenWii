@@ -314,6 +314,7 @@ public class MenuManager : MonoBehaviour
         {
             currentSelectedIndex = 0;
             UpdateButtonSelection();
+            UpdateWiimoteLEDs();
             pauseButton.SetSelected(true);
         }
 
@@ -328,6 +329,8 @@ public class MenuManager : MonoBehaviour
         {
             menuPanel.SetActive(false);
         }
+
+        UpdateWiimoteLEDs();
 
         // Reset all button states
         ResetGaze();
@@ -373,6 +376,8 @@ public class MenuManager : MonoBehaviour
                 menuButtons[i].SetSelected(i == currentSelectedIndex);
             }
         }
+
+        UpdateWiimoteLEDs();
 
         Debug.Log($"Selected button {currentSelectedIndex}");
     }
@@ -486,5 +491,34 @@ public class MenuManager : MonoBehaviour
     public void ForceOpenMenu()
     {
         OpenMenu();
+    }
+
+    private void UpdateWiimoteLEDs()
+    {
+        if (InputManager.wiimote == null) return;
+
+        if (!isMenuOpen)
+        {
+            // Default state: Only LED 1
+            InputManager.wiimote.SendPlayerLED(true, false, false, false);
+            return;
+        }
+
+        // Map selection index to LEDs
+        switch (currentSelectedIndex)
+        {
+            case 0: // First Button
+                InputManager.wiimote.SendPlayerLED(true, false, false, false);
+                break;
+            case 1: // Second Button
+                InputManager.wiimote.SendPlayerLED(false, true, false, false);
+                break;
+            case 2: // Third Button
+                InputManager.wiimote.SendPlayerLED(false, false, true, false);
+                break;
+            default: // Any other buttons (if any) loop back to LED 1
+                InputManager.wiimote.SendPlayerLED(true, false, false, false);
+                break;
+        }
     }
 }
