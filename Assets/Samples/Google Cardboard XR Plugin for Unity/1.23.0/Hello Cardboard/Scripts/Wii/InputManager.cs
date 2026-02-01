@@ -512,12 +512,22 @@ public class InputManager : MonoBehaviour {
     // Using Coroutine because Thread.Sleep() freezes the game
     public IEnumerator RumbleWiimoteForSecondsCoroutine(float durationInSeconds)
     {
-        wiimote.RumbleOn = true; // Enabled Rumble
-        wiimote.SendDataReportMode(InputDataType.REPORT_BUTTONS_ACCEL_EXT16);
-        yield return new WaitForSeconds(durationInSeconds);
+        if (wiimote == null) yield break;
 
-        wiimote.RumbleOn = false; // Disabled Rumble
-        wiimote.SendDataReportMode(InputDataType.REPORT_BUTTONS_ACCEL_EXT16);
+        // Enable the bit in the Wiimote object
+        wiimote.RumbleOn = true;
+
+        // force an Output Report to be sent to the hardware
+        wiimote.SendStatusInfoRequest();
+
+        // use Realtime so it doesn't freeze when the game is paused
+        yield return new WaitForSecondsRealtime(durationInSeconds);
+
+        // disable the bit
+        wiimote.RumbleOn = false;
+
+        // force the "stop" command to the hardware
+        wiimote.SendStatusInfoRequest();
     }
 
     public void PlayLoadingLEDEffect(float totalDurationInSeconds)
@@ -544,13 +554,5 @@ public class InputManager : MonoBehaviour {
 
         wiimote.SendPlayerLED(true, false, false, false);
         isLEDEffectPlaying = false;
-    }
-
-    private void OnApplicationQuit() {
-        if(wiimote != null) {
-            StopRumble();
-            WiimoteManager.Cleanup(wiimote);
-            wiimote = null;
-        }
     }
 }

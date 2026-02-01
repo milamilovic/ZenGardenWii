@@ -1,6 +1,8 @@
 using UnityEngine;
 using System;
+using System.Collections;
 using Image = UnityEngine.UI.Image;
+using WiimoteApi;
 
 public class VRMenuButton : MonoBehaviour
 {
@@ -13,10 +15,18 @@ public class VRMenuButton : MonoBehaviour
     [SerializeField] private Color selectedColor = new Color(1f, 0.8f, 0.2f, 0.6f);
     [SerializeField] private Color activatedColor = new Color(0.2f, 1f, 0.2f, 0.8f);
 
+    [Header("Vibration Settings")]
+    [SerializeField] private bool enableVibration = true;
+    [SerializeField] private float selectionVibrationDuration = 0.05f;
+    [SerializeField] private float activationVibrationDuration = 0.1f;
+
     public event Action OnButtonActivated;
 
     private bool isGazing = false;
     private bool isSelected = false;
+    private bool wasSelected = false;
+
+    private static MonoBehaviour vibrationHandler;
 
     void Start()
     {
@@ -31,13 +41,21 @@ public class VRMenuButton : MonoBehaviour
         {
             buttonBackground.color = normalColor;
         }
+
+        if (vibrationHandler == null)
+        {
+            vibrationHandler = this;
+        }
     }
 
-    /// <summary>
-    /// Set whether this button is currently selected (for keyboard/Wiimote navigation)
-    /// </summary>
     public void SetSelected(bool selected)
     {
+        if (selected && !wasSelected && enableVibration)
+        {
+            VibrateWiimote(selectionVibrationDuration);
+        }
+
+        wasSelected = selected;
         isSelected = selected;
         UpdateVisuals();
     }
@@ -86,6 +104,71 @@ public class VRMenuButton : MonoBehaviour
         Invoke("ResetColor", 0.3f);
     }
 
+    private void VibrateWiimote(float duration)
+    {
+        Wiimote wiimote = InputManager.wiimote;
+        if (wiimote != null)
+        {
+            Debug.Log($"Vibrating Wiimote for {duration} seconds");
+            MonoBehaviour handler = FindActiveHandler();
+            if (handler != null)
+            {
+                handler.StartCoroutine(VibrateCoroutine(wiimote, duration));
+            }
+            else
+            {
+                Debug.LogWarning("No active handler found for vibration coroutine");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("Wiimote is null - cannot vibrate");
+        }
+    }
+
+    private MonoBehaviour FindActiveHandler()
+    {
+        if (vibrationHandler != null && vibrationHandler.gameObject.activeInHierarchy)
+        {
+            return vibrationHandler;
+        }
+
+        MenuManager menuManager = FindObjectOfType<MenuManager>();
+        if (menuManager != null)
+        {
+            return menuManager;
+        }
+
+        VRMenuButton[] buttons = FindObjectsOfType<VRMenuButton>();
+        foreach (var button in buttons)
+        {
+            if (button.gameObject.activeInHierarchy)
+            {
+                return button;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerator VibrateCoroutine(Wiimote wiimote, float duration)
+    {
+        if (wiimote == null) yield break;
+
+        Debug.Log("Rumble ON");
+        wiimote.RumbleOn = true;
+        wiimote.SendStatusInfoRequest(); // Required to actually start vibration
+
+        // LEDs work the same way, SendPlayerLED internally sends the packet
+        wiimote.SendPlayerLED(true, false, false, false);
+
+        yield return new WaitForSecondsRealtime(duration);
+
+        Debug.Log("Rumble OFF");
+        wiimote.RumbleOn = false;
+        wiimote.SendStatusInfoRequest(); // Required to actually stop vibration
+    }
+
     private void ResetColor()
     {
         UpdateVisuals();
@@ -93,25 +176,18 @@ public class VRMenuButton : MonoBehaviour
 
     private void UpdateVisuals()
     {
-        if (buttonBackground == null)
-        {
-            Debug.LogError($"Button Background is NULL on {gameObject.name}!");
-            return;
-        }
+        if (buttonBackground == null) return;
 
         if (isGazing)
         {
-            // Gaze has priority over selection
             buttonBackground.color = selectedColor;
         }
         else if (isSelected)
         {
-            // Show selection state
             buttonBackground.color = selectedColor;
         }
         else
         {
-            // Normal state
             buttonBackground.color = normalColor;
         }
     }

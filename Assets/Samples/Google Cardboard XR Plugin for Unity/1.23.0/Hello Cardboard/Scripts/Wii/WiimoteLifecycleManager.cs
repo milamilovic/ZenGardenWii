@@ -28,6 +28,21 @@ public class WiimoteLifecycleManager : MonoBehaviour
 
     IEnumerator CleanupCoroutine()
     {
+
+        foreach (var wiimote in WiimoteManager.Wiimotes)
+        {
+            try
+            {
+                wiimote.RumbleOn = false;
+                wiimote.SendStatusInfoRequest(); // Send the rumble OFF command
+                wiimote.SendPlayerLED(false, false, false, false); // Turn off LEDs
+            }
+            catch { }
+        }
+
+        // wait for the background thread to actually push these messages to Bluetooth.
+        yield return new WaitForSecondsRealtime(0.2f);
+
         // Stop the thread FIRST
         WiimoteManager.StopSendThread();
         yield return new WaitForSecondsRealtime(0.2f);

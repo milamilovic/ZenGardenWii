@@ -215,12 +215,9 @@ public class UnifiedMovementController : MonoBehaviour
             return;
         }
 
-        // Read Wii Remote data
-        int ret;
-        do
-        {
-            ret = wiimote.ReadWiimoteData();
-        } while (ret > 0);
+        wiimote = InputManager.wiimote;
+
+        if (wiimote == null) return;
 
         // Get accelerometer data
         float[] accel = wiimote.Accel.GetCalibratedAccelData();

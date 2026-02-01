@@ -32,7 +32,7 @@ public class WiimoteManager
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void Init()
     {
-        isRunning = false;
+        isRunning = true;
         SendThreadObj = null;
         WriteQueue = null;
         _Wiimotes = new List<Wiimote>();

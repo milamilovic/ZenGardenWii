@@ -314,6 +314,7 @@ public class MenuManager : MonoBehaviour
         {
             currentSelectedIndex = 0;
             UpdateButtonSelection();
+            pauseButton.SetSelected(true);
         }
 
         Debug.Log($"Menu opened in {currentInputMode} mode");
