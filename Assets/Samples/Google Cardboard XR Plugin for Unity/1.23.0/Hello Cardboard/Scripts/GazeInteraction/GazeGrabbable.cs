@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using WiimoteApi;
 
 public class GazeGrabbable : MonoBehaviour, IGazeInteractable
 {
@@ -27,6 +28,9 @@ public class GazeGrabbable : MonoBehaviour, IGazeInteractable
 
     [Header("Player Collider Settings")]
     public bool addPlayerCollider = true;
+
+    [Header("Vibration Settings")]
+    [SerializeField] private float grabVibrationDuration = 0.2f;
 
     private bool isGrabbed = false;
     private BoxCollider boxCollider;
@@ -81,9 +85,27 @@ public class GazeGrabbable : MonoBehaviour, IGazeInteractable
     void Update()
     {
         // Handle input for dropping
-        if (Input.GetKeyDown(KeyCode.Space) || Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
+        if (isGrabbed)
         {
-            if (isGrabbed)
+            bool shouldDrop = false;
+
+            // Check for space bar or touch
+            if (Input.GetKeyDown(KeyCode.Space) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began))
+            {
+                shouldDrop = true;
+            }
+
+            // Check for Wiimote button 1
+            if (InputManager.inputs != null && WiimoteManager.HasWiimote())
+            {
+                if (InputManager.inputs.GetWiimoteButtonDown(Button.One))
+                {
+                    shouldDrop = true;
+                    Debug.Log("Wiimote Button 1 pressed - dropping object!");
+                }
+            }
+
+            if (shouldDrop)
             {
                 DropObject();
             }
@@ -281,6 +303,19 @@ public class GazeGrabbable : MonoBehaviour, IGazeInteractable
         }
 
         CreatePlayerCollider();
+
+        // Trigger vibration when grabbing - use the same method as the working Cube example
+        Debug.Log($"Attempting grab vibration - InputManager.inputs: {InputManager.inputs != null}");
+
+        if (InputManager.inputs != null)
+        {
+            InputManager.inputs.RumbleWiimoteForSeconds(grabVibrationDuration);
+            Debug.Log("Grab vibration triggered!");
+        }
+        else
+        {
+            Debug.LogWarning("Cannot vibrate - InputManager.inputs is null!");
+        }
 
         Debug.Log("Grabbed: " + gameObject.name + " (Physics: " + usePhysicsVersion + ")");
     }

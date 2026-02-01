@@ -2,6 +2,10 @@
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
+/// <summary>
+/// Integrated RecenterController that works with MenuManager
+/// Handles recentering and delegates menu management to MenuManager
+/// </summary>
 public class RecenterController : MonoBehaviour
 {
     [Header("Activation Settings")]
@@ -14,11 +18,8 @@ public class RecenterController : MonoBehaviour
 
     [Header("Menu Settings")]
     [SerializeField] private GameObject menuPanel;
+    [SerializeField] private MenuManager menuManager;
     [SerializeField] private float menuDistance = 2f;
-    [SerializeField] private VRMenuButton resumeButton;
-    [SerializeField] private VRMenuButton pauseButton;
-    [SerializeField] private VRMenuButton quitButton;
-    [SerializeField] private float gazeActivationTime = 1.5f;
 
     [Header("Visual Feedback")]
     [SerializeField] private Image progressCircle;
@@ -45,17 +46,17 @@ public class RecenterController : MonoBehaviour
     private float initialYaw = 0f;
     private bool isInitialized = false;
 
-    // Menu gaze tracking
-    private bool isMenuOpen = false;
-    private VRMenuButton currentGazedButton = null;
-    private float currentGazeTime = 0f;
-    private bool isPaused = false;
-
     void Start()
     {
         mainCamera = Camera.main;
 
-        // is gyroscope available
+        // Get MenuManager reference if not assigned
+        if (menuManager == null)
+        {
+            menuManager = FindObjectOfType<MenuManager>();
+        }
+
+        // Check if gyroscope is available
         if (SystemInfo.supportsGyroscope)
         {
             Input.gyro.enabled = true;
@@ -74,20 +75,6 @@ public class RecenterController : MonoBehaviour
         HideFeedback();
         HideTiltIndicator();
 
-        // Setup menu
-        if (menuPanel != null)
-        {
-            menuPanel.SetActive(false);
-        }
-
-        // Setup button listeners
-        if (resumeButton != null)
-            resumeButton.OnButtonActivated += ResumeGame;
-        if (pauseButton != null)
-            pauseButton.OnButtonActivated += PauseGame;
-        if (quitButton != null)
-            quitButton.OnButtonActivated += QuitGame;
-
         Invoke("InitializeRecenter", 0.5f);
     }
 
@@ -103,12 +90,10 @@ public class RecenterController : MonoBehaviour
         if (!isInitialized)
             return;
 
-        // If menu is open, handle gaze selection
-        if (isMenuOpen)
-        {
-            HandleGazeSelection();
-        }
-        else
+        // Only check for tilt activation if menu is not open
+        bool isMenuOpen = menuManager != null && menuManager.IsMenuOpen();
+
+        if (!isMenuOpen)
         {
             // Check for tilt activation
             if (!isRecenterActivated && !isMenuActivated)
@@ -128,7 +113,7 @@ public class RecenterController : MonoBehaviour
 
     private void CheckTiltActivation()
     {
-        // check head angle
+        // Check head angle
         float rollAngle = GetRollAngle();
 
         // Left tilt - recenter
@@ -180,7 +165,7 @@ public class RecenterController : MonoBehaviour
             return roll > 180f ? roll - 360f : roll;
         }
 #else
-        // use camera rotation
+        // Use camera rotation
         float roll = mainCamera.transform.localEulerAngles.z;
         if (roll > 180f) roll -= 360f;
         return roll;
@@ -213,13 +198,13 @@ public class RecenterController : MonoBehaviour
 
     private void CheckRecenter()
     {
-        // movement since the last frame
+        // Check movement since last frame
         float rotationDelta = Quaternion.Angle(lastRotation, mainCamera.transform.rotation);
 
-        // is that still enough
+        // Check if still enough
         if (rotationDelta < rotationThreshold)
         {
-            // still - increase the timer
+            // Still - increase the timer
             if (!isHolding)
             {
                 isHolding = true;
@@ -261,7 +246,7 @@ public class RecenterController : MonoBehaviour
             currentHoldTime += Time.deltaTime;
             UpdateFeedback(currentHoldTime / holdTime);
 
-            // has time passed
+            // Has time passed
             if (currentHoldTime >= holdTime)
             {
                 OpenMenu();
@@ -270,7 +255,7 @@ public class RecenterController : MonoBehaviour
         }
         else
         {
-            // reset timer
+            // Reset timer
             if (isHolding)
             {
                 currentHoldTime = 0f;
@@ -279,7 +264,7 @@ public class RecenterController : MonoBehaviour
             }
         }
 
-        // remember rotation for the next frame
+        // Remember rotation for next frame
         lastRotation = mainCamera.transform.rotation;
     }
 
@@ -304,8 +289,6 @@ public class RecenterController : MonoBehaviour
     {
         if (menuPanel == null) return;
 
-        isMenuOpen = true;
-
         // Position menu in front of player
         Vector3 menuPosition = mainCamera.transform.position + mainCamera.transform.forward * menuDistance;
         menuPanel.transform.position = menuPosition;
@@ -314,123 +297,18 @@ public class RecenterController : MonoBehaviour
         menuPanel.transform.LookAt(mainCamera.transform);
         menuPanel.transform.Rotate(0, 180, 0);
 
-        menuPanel.SetActive(true);
-
-        Debug.Log("Menu opened!");
-    }
-
-    private void HandleGazeSelection()
-    {
-        Ray ray = new Ray(mainCamera.transform.position, mainCamera.transform.forward);
-        RaycastHit hit;
-
-        VRMenuButton hitButton = null;
-
-        // Check if looking at a button
-        if (Physics.Raycast(ray, out hit, menuDistance + 1f))
+        // Use MenuManager to open the menu
+        if (menuManager != null)
         {
-            hitButton = hit.collider.GetComponent<VRMenuButton>();
-        }
-
-        // If looking at a button
-        if (hitButton != null)
-        {
-            if (currentGazedButton == hitButton)
-            {
-                // Continue gazing at same button
-                currentGazeTime += Time.unscaledDeltaTime;
-
-                // Update button progress
-                hitButton.UpdateGazeProgress(currentGazeTime / gazeActivationTime);
-
-                // Activate button after gaze time
-                if (currentGazeTime >= gazeActivationTime)
-                {
-                    hitButton.ActivateButton();
-                    ResetGaze();
-                }
-            }
-            else
-            {
-                // Started looking at new button
-                if (currentGazedButton != null)
-                {
-                    currentGazedButton.ResetGaze();
-                }
-
-                currentGazedButton = hitButton;
-                currentGazeTime = 0f;
-                hitButton.StartGaze();
-            }
+            menuManager.ForceOpenMenu();
         }
         else
         {
-            // Not looking at any button
-            if (currentGazedButton != null)
-            {
-                currentGazedButton.ResetGaze();
-            }
-            ResetGaze();
-        }
-    }
-
-    private void ResetGaze()
-    {
-        currentGazedButton = null;
-        currentGazeTime = 0f;
-    }
-
-    // Button functions
-    public void ResumeGame()
-    {
-        CloseMenu();
-        if (isPaused)
-        {
-            Time.timeScale = 1f;
-            isPaused = false;
-        }
-        Debug.Log("Game resumed!");
-    }
-
-    public void PauseGame()
-    {
-        isPaused = !isPaused;
-        Time.timeScale = isPaused ? 0f : 1f;
-
-        if (pauseButton != null)
-        {
-            Text buttonText = pauseButton.GetComponentInChildren<Text>();
-            if (buttonText != null)
-            {
-                buttonText.text = isPaused ? "Resume" : "Pause";
-            }
+            // Fallback if no MenuManager
+            menuPanel.SetActive(true);
         }
 
-        Debug.Log(isPaused ? "Game paused!" : "Game resumed!");
-    }
-
-    public void QuitGame()
-    {
-        Debug.Log("Quitting game...");
-
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
-    }
-
-    private void CloseMenu()
-    {
-        if (menuPanel != null)
-        {
-            menuPanel.SetActive(false);
-        }
-
-        isMenuOpen = false;
-        ResetGaze();
-
-        Debug.Log("Menu closed!");
+        Debug.Log("Menu opened!");
     }
 
     private void ResetActivation()

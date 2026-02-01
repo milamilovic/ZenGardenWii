@@ -1,4 +1,5 @@
 using UnityEngine;
+using WiimoteApi;
 
 public class GazeInteractor : MonoBehaviour
 {
@@ -9,6 +10,17 @@ public class GazeInteractor : MonoBehaviour
 
     private float timer;
     private IGazeInteractable currentInteractable;
+    private UnifiedMovementController movementController;
+
+    void Start()
+    {
+        // Find the UnifiedMovementController
+        movementController = FindObjectOfType<UnifiedMovementController>();
+        if (movementController == null)
+        {
+            Debug.LogError("GazeInteractor: Cannot find UnifiedMovementController!");
+        }
+    }
 
     void Update()
     {
@@ -17,7 +29,6 @@ public class GazeInteractor : MonoBehaviour
 
         if (Physics.Raycast(ray, out hit, maxGazeDistance, interactLayer))
         {
-
             IGazeInteractable interactable = hit.collider.GetComponent<IGazeInteractable>();
 
             // No gaze interactable on this object
@@ -44,10 +55,8 @@ public class GazeInteractor : MonoBehaviour
                 return;
             }
 
-
             if (interactable != null)
             {
-
                 // New object
                 if (currentInteractable != interactable)
                 {
@@ -60,16 +69,61 @@ public class GazeInteractor : MonoBehaviour
                     timer = 0;
                 }
 
-                // update progress
-                timer += Time.deltaTime;
-                float progress = Mathf.Clamp01(timer / gazeTime);
-                currentInteractable.UpdateGazeProgress(progress);
+                // Get current control mode
+                UnifiedMovementController.ControlMode currentMode = GetCurrentControlMode();
 
-                // activete when filled
-                if (timer >= gazeTime)
+                // Check for button press activation (Wii or Keyboard mode)
+                bool buttonPressed = false;
+
+                if (currentMode == UnifiedMovementController.ControlMode.WiiRemote)
                 {
+                    // Check if wiimote is connected and B button pressed
+                    if (InputManager.inputs != null && WiimoteManager.HasWiimote())
+                    {
+                        if (InputManager.inputs.GetWiimoteButtonDown(Button.B))
+                        {
+                            buttonPressed = true;
+                            Debug.Log("B Button pressed - activating object!");
+                        }
+                    }
+                }
+                else if (currentMode == UnifiedMovementController.ControlMode.KeyboardMouse)
+                {
+                    // Check for B key or LEFT MOUSE BUTTON
+                    if (Input.GetKeyDown(KeyCode.B) || Input.GetMouseButtonDown(0))
+                    {
+                        buttonPressed = true;
+                        if (Input.GetKeyDown(KeyCode.B))
+                            Debug.Log("B Key pressed - activating object!");
+                        else
+                            Debug.Log("Mouse clicked - activating object!");
+                    }
+                }
+
+                if (buttonPressed)
+                {
+                    // Instant activation on button press
                     currentInteractable.OnGazeActivate();
                     timer = 0;
+                }
+                else if (currentMode == UnifiedMovementController.ControlMode.MobileVR)
+                {
+                    // Mobile VR mode: use gaze timer
+                    timer += Time.deltaTime;
+                    float progress = Mathf.Clamp01(timer / gazeTime);
+                    currentInteractable.UpdateGazeProgress(progress);
+
+                    // Activate when filled
+                    if (timer >= gazeTime)
+                    {
+                        currentInteractable.OnGazeActivate();
+                        timer = 0;
+                    }
+                }
+                else
+                {
+                    // For Wii/Keyboard, show progress but don't auto-activate
+                    currentInteractable.UpdateGazeProgress(0f);
                 }
             }
             else
@@ -79,7 +133,7 @@ public class GazeInteractor : MonoBehaviour
         }
         else
         {
-            // exit gaze
+            // Exit gaze
             if (currentInteractable != null)
             {
                 currentInteractable.OnGazeExit();
@@ -87,5 +141,22 @@ public class GazeInteractor : MonoBehaviour
             }
             timer = 0;
         }
+    }
+
+    private UnifiedMovementController.ControlMode GetCurrentControlMode()
+    {
+        if (movementController != null)
+        {
+            // Use reflection to get the current mode since it's private
+            var field = typeof(UnifiedMovementController).GetField("currentMode",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field != null)
+            {
+                return (UnifiedMovementController.ControlMode)field.GetValue(movementController);
+            }
+        }
+
+        // Default to MobileVR if can't determine
+        return UnifiedMovementController.ControlMode.MobileVR;
     }
 }
