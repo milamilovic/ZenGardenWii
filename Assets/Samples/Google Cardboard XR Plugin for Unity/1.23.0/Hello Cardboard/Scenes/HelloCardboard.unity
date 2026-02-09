@@ -13626,7 +13626,7 @@ MonoBehaviour:
   wiiDownwardTiltThreshold: 15
   wiiDownwardTiltMaxSpeed: 50
   wiiTiltSmoothing: 8
-  wiiHorizontalRotationSpeed: 120
+  wiiHorizontalRotationSpeed: 60
   wiiVerticalRotationSpeed: 60
   wiiMaxVerticalAngle: 60
   keyboardSpeed: 2
