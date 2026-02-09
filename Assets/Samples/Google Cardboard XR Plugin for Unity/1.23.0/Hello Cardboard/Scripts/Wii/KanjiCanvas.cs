@@ -94,23 +94,79 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
             character = "愛",
             meaning = "Love",
             pronunciation = "ai",
-            description = "This kanji represents love and affection. It combines elements meaning 'to receive' and 'heart'."
+            description = "Represents love and affection, combining elements of heart and acceptance."
         });
 
         kanjiList.Add(new KanjiInfo
         {
-            character = "平和",
-            meaning = "Peace",
-            pronunciation = "heiwa",
-            description = "Combines 'flat/level' (平) and 'harmony' (和) to mean peace."
+            character = "和",
+            meaning = "Harmony / Peace",
+            pronunciation = "wa",
+            description = "Symbolizes harmony, peace, and Japanese culture."
         });
 
         kanjiList.Add(new KanjiInfo
         {
             character = "道",
-            meaning = "Way/Path",
+            meaning = "Way / Path",
             pronunciation = "dō",
-            description = "Represents a path or way, both physical and philosophical. Used in words like 'karate-dō'."
+            description = "Represents a path or way of life, both physical and philosophical."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "心",
+            meaning = "Heart / Mind",
+            pronunciation = "kokoro",
+            description = "Represents the heart, mind, and spirit."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "力",
+            meaning = "Power / Strength",
+            pronunciation = "chikara",
+            description = "Symbolizes physical or inner strength."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "光",
+            meaning = "Light",
+            pronunciation = "hikari",
+            description = "Represents light, hope, and illumination."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "水",
+            meaning = "Water",
+            pronunciation = "mizu",
+            description = "One of the basic elements, symbolizing life and fluidity."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "火",
+            meaning = "Fire",
+            pronunciation = "hi",
+            description = "Represents fire, energy, and passion."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "風",
+            meaning = "Wind",
+            pronunciation = "kaze",
+            description = "Symbolizes wind, air, and change."
+        });
+
+        kanjiList.Add(new KanjiInfo
+        {
+            character = "空",
+            meaning = "Sky / Empty",
+            pronunciation = "sora",
+            description = "Represents the sky or emptiness, often used in philosophical contexts."
         });
     }
 
