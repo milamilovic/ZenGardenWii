@@ -1,8 +1,9 @@
 # VR Zen Garden with Wii Remote Integration
-A peaceful Virtual Reality zen garden experience extended with Nintendo Wii Remote controller support for interactive kanji drawing, built with Unity for Google Cardboard and desktop platforms.
+A peaceful Virtual Reality zen garden experience extended with Nintendo Wii Remote controller support.
 
 
 
+<br/>
 
 https://github.com/user-attachments/assets/4f2a5103-33e7-4160-89d1-093eb4775c69
 
