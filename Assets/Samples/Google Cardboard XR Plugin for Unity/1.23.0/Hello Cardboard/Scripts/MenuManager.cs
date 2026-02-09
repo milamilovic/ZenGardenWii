@@ -153,6 +153,12 @@ public class MenuManager : MonoBehaviour
 
     void HandleMenuToggle()
     {
+        // menu should not open if in drawing mode
+        if (movementController != null && movementController.IsDrawingMode())
+        {
+            return;
+        }
+
         bool shouldToggle = false;
 
         switch (currentInputMode)

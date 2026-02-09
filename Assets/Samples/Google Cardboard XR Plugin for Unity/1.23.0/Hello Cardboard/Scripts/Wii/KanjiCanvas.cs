@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
 using WiimoteApi;
+using TMPro;
 
 public class KanjiCanvas : MonoBehaviour, IGazeInteractable
 {
@@ -24,12 +25,18 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
 
     private bool isActive = false;
     private bool isDrawing = false;
+    public static bool IsDrawingModeActive { get; private set; }
     private UnifiedMovementController movementController;
     private LineRenderer currentStroke;
     private List<LineRenderer> strokes = new List<LineRenderer>();
     private Vector3 lastDrawPoint;
 
-    // Changed: CanGaze should be true when NOT active (like the rake)
+    [Header("Kanji Display")]
+    public Canvas kanjiDisplayCanvas;
+    public TextMeshProUGUI kanjiText;
+    public TextMeshProUGUI kanjiInfoText;
+    public float kanjiOpacity = 0.3f;
+
     public bool CanGaze => !isActive;
 
     private RectTransform cachedPointerRect;
@@ -65,7 +72,6 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
         GameObject pointerObj = GameObject.Find("WiimotePointer");
         if (pointerObj != null) pointerRect = pointerObj.GetComponent<RectTransform>();
 
-        // DEBUG: Check layer setup
         Debug.Log($"Canvas Layer Mask: {canvasLayer.value}");
         Debug.Log($"Canvas Layer Mask includes layer {LayerMask.LayerToName(LayerMask.NameToLayer("Canvas"))}: {((canvasLayer.value & (1 << LayerMask.NameToLayer("Canvas"))) != 0)}");
 
@@ -124,12 +130,10 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
 
         Wiimote wiimote = WiimoteManager.Wiimotes[0];
 
-        // OPTIMIZATION: Only raycast if B button is actually held
         if (!wiimote.Button.b)
         {
             if (isDrawing) { isDrawing = false; currentStroke = null; }
 
-            // Still check buttons for clearing/switching
             if (InputManager.inputs.GetWiimoteButtonDown(Button.A)) ClearCanvas();
             if (InputManager.inputs.GetWiimoteButtonDown(Button.Plus)) ShowNextKanji();
             if (InputManager.inputs.GetWiimoteButtonDown(Button.Minus)) ShowPreviousKanji();
@@ -141,7 +145,6 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
 
         if (Physics.Raycast(ray, out hit, 10f, canvasLayer))
         {
-            // Simple check: is it this object or a child?
             if (hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
             {
                 if (!isDrawing) { StartNewStroke(); isDrawing = true; }
@@ -227,12 +230,29 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
 
     void DisplayKanjiInfo()
     {
+        if (kanjiList.Count == 0) return;
+
         KanjiInfo kanji = kanjiList[currentKanjiIndex];
+
+        // Update the UI text elements
+        if (kanjiText != null)
+        {
+            kanjiText.text = kanji.character;
+
+            // Set semi-transparent color for tracing
+            Color textColor = kanjiText.color;
+            textColor.a = kanjiOpacity;
+            kanjiText.color = textColor;
+        }
+
+        if (kanjiInfoText != null)
+        {
+            kanjiInfoText.text = $"{kanji.meaning} - ({kanji.pronunciation})";
+        }
+
         Debug.Log($"Kanji: {kanji.character} ({kanji.pronunciation}) - {kanji.meaning}\n{kanji.description}");
-        // TODO: Display this on a UI panel near the canvas
     }
 
-    // IGazeInteractable Implementation - NOW WORKS LIKE RAKE
     public void OnGazeEnter()
     {
         // Don't show UI when already active
@@ -276,7 +296,6 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
         // Don't update progress when already active
         if (isActive) return;
 
-        // Only update if the change is visible (prevents constant UI rebuilding)
         if (fillCircle != null && Mathf.Abs(progress - lastProgress) > 0.01f)
         {
             fillCircle.fillAmount = progress;
@@ -304,6 +323,7 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
     void ActivateCanvas()
     {
         isActive = true;
+        IsDrawingModeActive = true;
 
         // Hide the gaze UI elements
         if (gazeCanvas != null)
@@ -314,6 +334,9 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
         {
             visualEffects.HideEffects();
         }
+
+        if (kanjiDisplayCanvas != null)
+            kanjiDisplayCanvas.enabled = true;
 
         // Disable movement
         if (movementController != null)
@@ -335,8 +358,12 @@ public class KanjiCanvas : MonoBehaviour, IGazeInteractable
     void DeactivateCanvas()
     {
         isActive = false;
+        IsDrawingModeActive = false;
         isDrawing = false;
         currentStroke = null;
+
+        if (kanjiDisplayCanvas != null)
+            kanjiDisplayCanvas.enabled = false;
 
         // Re-enable movement
         if (movementController != null)
