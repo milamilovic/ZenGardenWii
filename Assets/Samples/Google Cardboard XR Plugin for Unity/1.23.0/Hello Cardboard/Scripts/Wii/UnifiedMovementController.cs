@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using WiimoteApi;
@@ -62,6 +62,10 @@ public class UnifiedMovementController : MonoBehaviour
     private Vector3 wiiAcceleration;
     private float smoothedTiltInput = 0f;
     private float currentVerticalAngle = 0f;  // Track camera vertical rotation
+
+    private float targetHorizontalRotation = 0f;
+    private float targetVerticalRotation = 0f;
+    private float rotationSmoothTime = 0.1f;
 
     // Keyboard specific
     private float rotationX = 0f;
@@ -216,8 +220,12 @@ public class UnifiedMovementController : MonoBehaviour
         }
 
         wiimote = InputManager.wiimote;
-
         if (wiimote == null) return;
+
+        if (isDrawingMode)
+        {
+            return; // Exit early, no movement
+        }
 
         // Get accelerometer data
         float[] accel = wiimote.Accel.GetCalibratedAccelData();
@@ -257,32 +265,6 @@ public class UnifiedMovementController : MonoBehaviour
         // Smooth the speed changes
         float targetSpeed = isWalking ? currentSpeedFactor : 0f;
         currentSpeedFactor = Mathf.Lerp(currentSpeedFactor, targetSpeed, Time.deltaTime * wiiTiltSmoothing);
-
-        // D-Pad controls for rotation only
-        // Left/Right for horizontal rotation (turning)
-        if (wiimote.Button.d_left)
-        {
-            transform.Rotate(0, -wiiHorizontalRotationSpeed * Time.deltaTime, 0);
-        }
-        if (wiimote.Button.d_right)
-        {
-            transform.Rotate(0, wiiHorizontalRotationSpeed * Time.deltaTime, 0);
-        }
-
-        // Up/Down for camera vertical rotation (looking up/down)
-        if (wiimote.Button.d_up)
-        {
-            currentVerticalAngle -= wiiVerticalRotationSpeed * Time.deltaTime;
-            currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
-        }
-        if (wiimote.Button.d_down)
-        {
-            currentVerticalAngle += wiiVerticalRotationSpeed * Time.deltaTime;
-            currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
-        }
-
-        // Apply vertical rotation to camera
-        mainCamera.transform.localRotation = Quaternion.Euler(currentVerticalAngle, 0f, 0f);
 
         UpdateVignette(wasWalking);
     }
@@ -351,8 +333,51 @@ public class UnifiedMovementController : MonoBehaviour
             MovePlayer();
         }
 
+        if (currentMode == ControlMode.WiiRemote && wiimote != null)
+        {
+            HandleWiiRotationSmooth();
+        }
+
         // Audio handling
         HandleFootstepAudio();
+    }
+
+    private void HandleWiiRotationSmooth()
+    {
+        // Get input from D-pad
+        float horizontalInput = 0f;
+        float verticalInput = 0f;
+
+        if (wiimote.Button.d_left)
+            horizontalInput = -1f;
+        else if (wiimote.Button.d_right)
+            horizontalInput = 1f;
+
+        if (wiimote.Button.d_up)
+            verticalInput = -1f;
+        else if (wiimote.Button.d_down)
+            verticalInput = 1f;
+
+        // Smooth the rotation targets
+        targetHorizontalRotation = Mathf.Lerp(
+            targetHorizontalRotation,
+            horizontalInput * wiiHorizontalRotationSpeed,
+            Time.fixedDeltaTime / rotationSmoothTime
+        );
+
+        targetVerticalRotation = Mathf.Lerp(
+            targetVerticalRotation,
+            verticalInput * wiiVerticalRotationSpeed,
+            Time.fixedDeltaTime / rotationSmoothTime
+        );
+
+        // Apply horizontal rotation
+        transform.Rotate(0, targetHorizontalRotation * Time.fixedDeltaTime, 0);
+
+        // Apply vertical rotation
+        currentVerticalAngle += targetVerticalRotation * Time.fixedDeltaTime;
+        currentVerticalAngle = Mathf.Clamp(currentVerticalAngle, -wiiMaxVerticalAngle, wiiMaxVerticalAngle);
+        mainCamera.transform.localRotation = Quaternion.Euler(currentVerticalAngle, 0f, 0f);
     }
 
     private void HandleFootstepAudio()
@@ -453,8 +478,8 @@ public class UnifiedMovementController : MonoBehaviour
         {
             float downwardAngle = CalculateDownwardTiltAngle(new float[] { wiiAcceleration.x, wiiAcceleration.y, wiiAcceleration.z });
 
-            GUI.Label(new Rect(10, 70, 400, 20), $"Downward Tilt: {downwardAngle:F1}° (Threshold: {wiiDownwardTiltThreshold:F0}°)", style);
-            GUI.Label(new Rect(10, 90, 400, 20), $"Camera Angle: {currentVerticalAngle:F1}°", style);
+            GUI.Label(new Rect(10, 70, 400, 20), $"Downward Tilt: {downwardAngle:F1}ï¿½ (Threshold: {wiiDownwardTiltThreshold:F0}ï¿½)", style);
+            GUI.Label(new Rect(10, 90, 400, 20), $"Camera Angle: {currentVerticalAngle:F1}ï¿½", style);
             GUI.Label(new Rect(10, 110, 400, 20), $"Wiimote Connected: {wiimote != null}", style);
 
             // Show instructions
@@ -465,9 +490,9 @@ public class UnifiedMovementController : MonoBehaviour
                 instructionStyle.normal.textColor = Color.yellow;
                 instructionStyle.wordWrap = true;
 
-                string instructions = "Wii Controls:\n• Tilt Wiimote DOWN to walk (faster tilt = faster walk)\n" +
-                                    "• D-Pad LEFT/RIGHT to turn\n• D-Pad UP/DOWN to look up/down\n" +
-                                    "• Keep horizontal to stop";
+                string instructions = "Wii Controls:\nï¿½ Tilt Wiimote DOWN to walk (faster tilt = faster walk)\n" +
+                                    "ï¿½ D-Pad LEFT/RIGHT to turn\nï¿½ D-Pad UP/DOWN to look up/down\n" +
+                                    "ï¿½ Keep horizontal to stop";
                 GUI.Label(new Rect(10, Screen.height - 100, Screen.width - 20, 90), instructions, instructionStyle);
             }
         }
@@ -496,5 +521,24 @@ public class UnifiedMovementController : MonoBehaviour
         cleanupExecuted = true;
 
         wiimote = null;
+    }
+
+    private bool isDrawingMode = false;
+
+    public void SetDrawingMode(bool enabled)
+    {
+        isDrawingMode = enabled;
+
+        // Disable movement when in drawing mode
+        if (enabled)
+        {
+            isWalking = false;
+            currentSpeedFactor = 0f;
+        }
+    }
+
+    public bool IsDrawingMode()
+    {
+        return isDrawingMode;
     }
 }
